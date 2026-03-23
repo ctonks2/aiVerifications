@@ -94,8 +94,8 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">Age Verification Compliance Inspector</h1>
-          <p className="app-subtitle">Utah Regulatory Technology Verification</p>
+          <h1 className="app-title">A.G.N.E.S</h1>
+          <p className="app-subtitle">Age Gate Next-Gen Enforcement System</p>
         </div>
       </header>
 
@@ -165,7 +165,7 @@ function App() {
       )}
 
       <footer className="app-footer">
-        <p>Age Verification Compliance Testing System | Utah State Technology</p>
+        <p>Age Gate Next-Gen Enforcement System | Division TBD </p>
       </footer>
     </div>
   );
