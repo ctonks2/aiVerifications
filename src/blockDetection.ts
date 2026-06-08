@@ -7,10 +7,18 @@
 
 import { Page } from 'playwright';
 
+export interface CodeEvidence {
+  type: 'attribute' | 'text' | 'element' | 'href' | 'form';
+  description: string;
+  code: string; // Actual HTML/code snippet
+  location?: string; // Where it was found (element selector)
+}
+
 export interface BlockDetectionResult {
   isBlocked: boolean;
   blockType: 'bot-detection' | 'age-verification' | 'other' | null;
   blockElements: string[];
+  codeEvidence?: CodeEvidence[]; // Actual HTML code that triggered detection
   confidence: number; // 0-100
   metadata: SiteMetadata;
   explanation: string;
@@ -170,6 +178,87 @@ async function extractMetadata(page: Page): Promise<SiteMetadata> {
 }
 
 /**
+ * Extract actual HTML code evidence from page when patterns match
+ */
+async function extractCodeEvidence(page: Page, category: string, pattern: string): Promise<CodeEvidence | null> {
+  try {
+    // Try to find matches and extract their HTML
+    const evidence = await page.evaluate(({ searchPattern, searchCategory }: { searchPattern: string; searchCategory: string }) => {
+      const results: Array<{ type: string; code: string; location: string }> = [];
+      
+      // Search for input fields with matching attributes
+      if (searchCategory === 'formFields') {
+        const inputs = document.querySelectorAll(`input[id*="${searchPattern}"], input[name*="${searchPattern}"]`);
+        inputs.forEach((el: any) => {
+          results.push({
+            type: 'form',
+            code: el.outerHTML,
+            location: el.id || el.name || 'unnamed input'
+          });
+        });
+      }
+      
+      // Search for text containing the pattern
+      const walker = document.createNodeIterator(
+        document.body,
+        NodeFilter.SHOW_TEXT
+      );
+      
+      let node;
+      while (node = walker.nextNode()) {
+        if (node.textContent && node.textContent.toLowerCase().includes(searchPattern.toLowerCase())) {
+          const parent = (node as any).parentElement;
+          if (parent && parent.outerHTML.length < 500) { // Limit HTML size
+            results.push({
+              type: 'text',
+              code: parent.outerHTML,
+              location: parent.className || parent.tagName
+            });
+          }
+        }
+      }
+      
+      // Search for elements with matching classes/ids
+      const allElements = document.querySelectorAll(`[class*="${searchPattern}"], [id*="${searchPattern}"]`);
+      allElements.forEach((el: any) => {
+        if (el.outerHTML.length < 500) {
+          results.push({
+            type: 'element',
+            code: el.outerHTML,
+            location: el.className || el.id || el.tagName
+          });
+        }
+      });
+      
+      // Search for links with matching href patterns
+      const links = document.querySelectorAll('a[href*="age"], a[href*="verify"], a[href*="gate"], a[href*="adult"]');
+      links.forEach((el: any) => {
+        results.push({
+          type: 'href',
+          code: `<a href="${el.href}">${el.textContent}</a>`,
+          location: el.href
+        });
+      });
+      
+      return results.length > 0 ? results[0] : null;
+    }, { searchPattern: pattern, searchCategory: category });
+    
+    if (evidence) {
+      return {
+        type: evidence.type as any,
+        description: `${category}: ${pattern}`,
+        code: evidence.code,
+        location: evidence.location
+      };
+    }
+  } catch (error) {
+    // Silently continue if extraction fails
+  }
+  
+  return null;
+}
+
+/**
  * Detect what type of block is present on the page
  */
 export async function detectPageBlock(page: Page): Promise<BlockDetectionResult> {
@@ -208,12 +297,19 @@ export async function detectPageBlock(page: Page): Promise<BlockDetectionResult>
     // Check for age verification mechanisms
     let ageGateScore = 0;
     const ageGateElements: string[] = [];
+    const codeEvidenceList: CodeEvidence[] = [];
 
     for (const [category, patterns] of Object.entries(AGE_VERIFICATION_PATTERNS)) {
       for (const pattern of patterns) {
         if (pageContent.includes(pattern) || pageText.includes(pattern.toLowerCase())) {
           ageGateScore += 20;
           ageGateElements.push(`${category}: ${pattern}`);
+          
+          // Extract actual code evidence
+          const evidence = await extractCodeEvidence(page, category, pattern);
+          if (evidence && codeEvidenceList.length < 5) { // Limit to 5 evidence pieces
+            codeEvidenceList.push(evidence);
+          }
         }
       }
     }
@@ -230,6 +326,7 @@ export async function detectPageBlock(page: Page): Promise<BlockDetectionResult>
     } else if (ageGateScore > 0) {
       result.blockType = 'age-verification';
       result.blockElements = ageGateElements;
+      result.codeEvidence = codeEvidenceList; // Add actual code snippets
       result.confidence = Math.min(ageGateScore, 100);
       result.explanation = `Detected age verification gate: ${ageGateElements
         .slice(0, 3)

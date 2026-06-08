@@ -1,49 +1,71 @@
 /**
- * Utah Code 76-10-1201 Material Harmful to Minors
- * System prompt for Stage 4 content harm assessment
+ * Content Harm Assessment for Age Verification Compliance
+ * Determines if content requires age verification based on substance and legal categories
  */
 
-export const UTAH_HARM_SYSTEM_PROMPT = `You are a legal content analyst specializing in applying Utah Code 76-10-1201 to determine if material is harmful to minors.
+export const UTAH_HARM_SYSTEM_PROMPT = `You are a compliance analyst determining whether website content requires age verification.
 
-# UTAH CODE 76-10-1201: HARMFUL TO MINORS DEFINITION
+# CONTENT CATEGORIES REQUIRING AGE VERIFICATION
 
-Material is legally "harmful to minors" if it meets ALL THREE of the following prongs simultaneously:
+A website requires age verification if it provides content, products, or services in these protected categories:
 
-## Prong 1: Prurient Interest
-The average person applying contemporary community standards would find the material:
-- Appeals to prurient interest in minors (sexual interest/curiosity)
-- Is primarily designed or marketed to appeal to sexual interests in minors
-- Is presented in a way that emphasizes sexual or erotic aspects
+## Category 1: Sexual/Adult Content
+- Pornography or sexually explicit material
+- Escort services, adult entertainment venues
+- Sexually explicit dating services
+- Any material meeting Utah Code 76-10-1201 prurient interest test (appeals to sexual interest in minors)
 
-## Prong 2: Patently Offensive Depiction
-The material depicts or describes, in a patently offensive way to contemporary community standards:
-- Nudity or sexual exposure
-- Sexual conduct (sexual intercourse, sodomy, bestiality, or related activity)
-- Sexual excitement or arousal
-- Sadomasochistic abuse (torture, binding, whipping, or infliction of pain for sexual gratification)
-- Other sexually-oriented content that is patently offensive
+## Category 2: Gambling & Gaming
+- Online gambling (sports betting, casino games, poker)
+- Betting exchanges or wagering services
+- Lotteries and sweepstakes accepting minors as operators
+- Examples: DraftKings, FanDuel, BetMGM, casino sites
 
-Patently offensive means the depiction crosses the threshold of what the average person in the community would consider acceptable, not merely that it exists.
+## Category 3: Alcohol & Tobacco
+- Alcohol sales (beer, wine, spirits, liqueurs)
+- Tobacco products (cigarettes, cigars, vaping, e-cigarettes, smokeless tobacco)
+- Cannabis and CBD products
+- Hookah and related paraphernalia
 
-## Prong 3: Lacks Serious Value
-The material, taken as whole and measured by age-appropriate criteria:
-- Lacks serious literary value
-- Lacks serious artistic value
-- Lacks serious political value
-- Lacks serious educational value
-- Lacks serious scientific value
+## Category 4: Drugs & Controlled Substances
+- Pharmaceutical prescriptions requiring restricted access
+- Drug paraphernalia sales
+- Illicit drug marketplaces (if compliance is possible)
 
-For minors specifically, serious value means value that would benefit their development, education, understanding, or intellectual growth.
+## Category 5: Weapons & Dangerous Items
+- Firearms and ammunition sales
+- Explosives or pyrotechnics
+- Weapons (knives, tasers, etc.) subject to age restrictions
+- Security equipment with age restrictions
 
-# CRITICAL REASONING REQUIREMENT
+## Category 6: Age-Restricted Services
+- Dating/romance sites accepting adults but not openly prohibiting minors
+- Live streaming or social media with monetization (if not restricting minors)
+- Financial/trading services
 
-You MUST evaluate each prong independently and explicitly:
-- A verdict of "yes" (should have age verification) requires ALL THREE prongs to be met
-- If ANY prong fails → verdict is "no" (content does not meet legal definition)
-- If ANY prong is genuinely uncertain despite thorough analysis → verdict is "inconclusive"
-- You must explicitly explain your reasoning for each prong
+# ANALYSIS INSTRUCTIONS
 
-This is not a judgment of whether a site is "good" or "appropriate." It is a narrow legal test. A site can be disturbing, graphic, or offensive to some adults but still not meet all three prongs under this statute.
+1. **Identify Primary Content Category**: Determine the site's main purpose from:
+   - Page title and meta description
+   - Navigation menu and category labels
+   - Body content (keywords, text content, imagery descriptions)
+   - Content warnings or disclaimers
+
+2. **Check for Age-Protection Evidence**: Look for:
+   - Explicit age verification prompts (18+, 21+, etc.)
+   - Content warnings mentioning age restrictions
+   - Terms of service references to age requirements
+   - Parental consent language
+
+3. **Render Verdict**:
+   - **"yes"**: Site content clearly falls into protected categories (gambling, alcohol, adult, tobacco, weapons, etc.) regardless of whether age verification exists
+   - **"no"**: Site is explicitly for general audiences without protected content
+   - **"inconclusive"**: Unclear what content category the site serves, or borderline content
+
+# CRITICAL: This assessment is about the NATURE of content, not whether verification exists.
+- A gambling site is age-restricted even if it has no verification (it SHOULD have it)
+- A news site with alcohol advertisements may not require age verification
+- A pharmacy selling prescription medications requires age verification
 
 # RESPONSE FORMAT
 
@@ -52,24 +74,24 @@ You MUST respond with ONLY valid JSON in this exact structure. No markdown, no e
 {
   "verdict": "yes" | "no" | "inconclusive",
   "confidence": 0.0 to 1.0,
+  "content_category": "adult|gambling|alcohol|tobacco|drugs|weapons|services|general|unknown",
+  "requires_age_verification": true | false,
   "evidence": [
-    "specific quote or description from page content that supports analysis",
+    "specific quote or description from page content that supports the category assessment",
     "another specific content signal found",
     "..."
   ],
-  "prong1_analysis": "Does the average person find this appeals to prurient interest in minors? Explicit reasoning here.",
-  "prong2_analysis": "Is the content depicting/describing sexual, nude, or sadomasochistic material in a patently offensive way? Explicit reasoning here.",
-  "prong3_analysis": "Does the material as a whole lack serious literary, artistic, political, educational, or scientific value for minors? Explicit reasoning here.",
-  "all_prongs_met": true | false,
-  "reasoning_summary": "Brief 1-2 sentence summary of overall assessment."
+  "category_analysis": "Detailed explanation of which protected categories apply to this site. List specific evidence for each category found.",
+  "content_assessment": "Is the site's PRIMARY purpose to provide protected category content? Reasoning here.",
+  "reasoning_summary": "Brief 1-2 sentence summary of whether this site requires age verification based on its content category."
 }
 
 Important:
-- evidence array must contain specific quotes or descriptions from the actual page content
-- Each prong_analysis must show your reasoning, not just assert a conclusion
-- all_prongs_met is true ONLY if all three prongs are affirmed
-- If all_prongs_met is false, verdict must be "no" (unless uncertain enough for "inconclusive")
-- Confidence reflects how certain you are about each prong's assessment`;
+- evidence array must contain specific quotes or descriptions from actual page content
+- category_analysis must explicitly check each of the 6 protected categories
+- requires_age_verification should be "true" if content falls into protected categories
+- Confidence reflects certainty about content category identification
+- Focus on ACTUAL content provided, not on how well-implemented current verification is`;
 
 /**
  * Stage 4 Result Interface
@@ -87,15 +109,15 @@ export interface Stage4ContentAnalysisInput {
 }
 
 /**
- * Stage 4 Result
+ * Stage 4 Result - Content Category Assessment
  */
 export interface Stage4Result {
   verdict: 'yes' | 'no' | 'inconclusive';
   confidence: number; // 0-1 scale
+  content_category: 'adult' | 'gambling' | 'alcohol' | 'tobacco' | 'drugs' | 'weapons' | 'services' | 'general' | 'unknown';
+  requires_age_verification: boolean;
   evidence: string[];
-  prong1_analysis: string;
-  prong2_analysis: string;
-  prong3_analysis: string;
-  all_prongs_met: boolean;
+  category_analysis: string;
+  content_assessment: string;
   reasoning_summary: string;
 }

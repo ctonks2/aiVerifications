@@ -20,7 +20,9 @@ export interface AgeDetectionResult {
   details: {
     networkProviders?: string[];
     htmlPatterns?: string[];
-    formFields?: string[];
+    htmlSnippets?: string[];
+    consentSnippets?: string[];
+    formFields?: Array<{ name: string; html: string }>;
     metaTags?: string[];
   };
 }
@@ -59,16 +61,21 @@ function analyzeNetworkRequests(requestUrls: string[]): {
 }
 
 /**
- * Searches HTML for age-related keywords and patterns
+ * Searches HTML for age-related keywords and patterns with actual text snippets
  */
 function searchHtmlPatterns(html: string, bodyText: string): {
   hasAgeKeywords: boolean;
   hasConsentLanguage: boolean;
   keywords: string[];
+  textSnippets: string[];
+  consentSnippets: string[];
 } {
   const combinedText = (html + ' ' + bodyText).toLowerCase();
   const foundKeywords: string[] = [];
+  const textSnippets: string[] = [];
+  const consentSnippets: string[] = [];
 
+  // Find actual text snippets containing keywords
   for (const keyword of AGE_RELATED_KEYWORDS) {
     // Skip generic matches like just "age" unless in context of verification
     if (keyword === 'age' && combinedText.includes(keyword.toLowerCase())) {
@@ -80,14 +87,35 @@ function searchHtmlPatterns(html: string, bodyText: string): {
     } else if (keyword !== 'age') {
       if (combinedText.includes(keyword.toLowerCase())) {
         foundKeywords.push(keyword);
+        
+        // Extract snippet of text containing this keyword
+        const regex = new RegExp(`.{0,60}${keyword}.{0,60}`, 'gi');
+        const matches = bodyText.match(regex);
+        if (matches && matches.length > 0) {
+          const snippet = matches[0].trim();
+          if (snippet.length > 10 && !textSnippets.includes(snippet)) {
+            textSnippets.push(snippet);
+          }
+        }
       }
     }
   }
 
+  // Find consent language and capture actual text
   let hasConsentLanguage = false;
   for (const consent of CONSENT_KEYWORDS) {
     if (combinedText.includes(consent.toLowerCase())) {
       hasConsentLanguage = true;
+      
+      // Extract snippet of text containing consent language
+      const regex = new RegExp(`.{0,50}${consent}.{0,50}`, 'gi');
+      const matches = bodyText.match(regex);
+      if (matches && matches.length > 0) {
+        const snippet = matches[0].trim();
+        if (snippet.length > 10 && !consentSnippets.includes(snippet)) {
+          consentSnippets.push(snippet);
+        }
+      }
       break;
     }
   }
@@ -96,22 +124,27 @@ function searchHtmlPatterns(html: string, bodyText: string): {
     hasAgeKeywords: foundKeywords.length > 0,
     hasConsentLanguage,
     keywords: foundKeywords,
+    textSnippets,
+    consentSnippets,
   };
 }
 
 /**
- * Detects age verification form fields in the page
+ * Detects age verification form fields in the page and captures their HTML
  */
-async function detectFormFields(page: Page): Promise<string[]> {
+async function detectFormFields(page: Page): Promise<{ name: string; html: string }[]> {
   const inputs = await page.evaluate(() => {
-    const elements: string[] = [];
+    const elements: Array<{ name: string; html: string }> = [];
 
     // Look for input fields with age-related names/ids (but more specific)
     document.querySelectorAll('input[type="date"], input[name*="birth"], input[name*="dob"], input[name*="age-verification"], input[id*="birth"], input[id*="dob"]').forEach((el) => {
       const name = (el as HTMLInputElement).name || (el as HTMLInputElement).id;
       // Filter out false positives like birthday mode toggles
       if (!name.toLowerCase().includes('toggle') && !name.toLowerCase().includes('mode')) {
-        elements.push(name);
+        elements.push({
+          name: name,
+          html: (el as HTMLInputElement).outerHTML
+        });
       }
     });
 
@@ -123,7 +156,10 @@ async function detectFormFields(page: Page): Promise<string[]> {
         (name.includes('birth') || name.includes('dob')) &&
         (name.includes('month') || name.includes('day') || name.includes('year'))
       ) {
-        elements.push(select.name);
+        elements.push({
+          name: select.name,
+          html: select.outerHTML
+        });
       }
     });
 
@@ -135,7 +171,7 @@ async function detectFormFields(page: Page): Promise<string[]> {
 
 /**
  * Detects meta tags and other HTML attributes indicating adult content
- * Includes detection of RTA (Restricted To Adults) ratings
+ * Returns actual meta tag HTML for verification
  */
 async function detectMetaTags(page: Page): Promise<string[]> {
   const tags = await page.evaluate(() => {
@@ -144,7 +180,9 @@ async function detectMetaTags(page: Page): Promise<string[]> {
     // Check meta tags for specific age/adult ratings
     document.querySelectorAll('meta').forEach((meta) => {
       const name = (meta.getAttribute('name') || '').toLowerCase();
+      const property = (meta.getAttribute('property') || '').toLowerCase();
       const content = (meta.getAttribute('content') || '').toLowerCase();
+      const httpEquiv = (meta.getAttribute('http-equiv') || '').toLowerCase();
 
       // Flag explicit adult/18+ indicators
       if (
@@ -156,7 +194,8 @@ async function detectMetaTags(page: Page): Promise<string[]> {
         content.includes('18+ only') ||
         (name.includes('age') && content.includes('restricted'))
       ) {
-        found.push(`${meta.getAttribute('name')}=${content}`);
+        // Return actual meta tag HTML for verification
+        found.push(meta.outerHTML);
       }
     });
 
@@ -208,18 +247,34 @@ export async function detectAgeVerification(
     if (htmlPatterns.hasAgeKeywords) {
       htmlScore += 20;
       details.htmlPatterns = htmlPatterns.keywords;
-      signals.push(`Found age-related keywords: ${htmlPatterns.keywords.slice(0, 3).join(', ')}`);
+      details.htmlSnippets = htmlPatterns.textSnippets;
+      
+      // Build signal with actual text snippets if available
+      if (htmlPatterns.textSnippets.length > 0) {
+        signals.push(`Found age-related text: "${htmlPatterns.textSnippets[0]}"`);
+      } else {
+        signals.push(`Found age-related keywords: ${htmlPatterns.keywords.slice(0, 3).join(', ')}`);
+      }
     }
 
     if (htmlPatterns.hasConsentLanguage && htmlPatterns.hasAgeKeywords) {
       htmlScore += 30;
-      signals.push('Found age-related consent language');
+      details.consentSnippets = htmlPatterns.consentSnippets;
+      
+      // Build signal with actual consent text if available
+      if (htmlPatterns.consentSnippets.length > 0) {
+        signals.push(`Found consent language: "${htmlPatterns.consentSnippets[0]}"`);
+      } else {
+        signals.push('Found age-related consent language');
+      }
     }
 
     if (formFields.length > 0) {
       htmlScore += 25;
       details.formFields = formFields;
-      signals.push(`Detected age verification form fields: ${formFields.join(', ')}`);
+      // Show actual form field names/IDs
+      const fieldNames = formFields.map(f => f.name).join(', ');
+      signals.push(`Detected age verification form fields: ${fieldNames}`);
     }
 
     if (metaTags.length > 0) {
@@ -227,7 +282,11 @@ export async function detectAgeVerification(
       const hasRTARating = metaTags.some((tag) => tag.toLowerCase().includes('rta-'));
       htmlScore += hasRTARating ? 40 : 15;
       details.metaTags = metaTags;
-      signals.push(`Detected ${hasRTARating ? 'RTA adult content rating' : 'adult content meta tags'}`);
+      
+      // Show actual meta tag HTML
+      if (metaTags.length > 0) {
+        signals.push(`Detected meta tag: ${metaTags[0]}`);
+      }
     }
 
     if (htmlScore >= 60) {

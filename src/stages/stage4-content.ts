@@ -229,10 +229,11 @@ export async function stage4ContentAnalysis(page: Page): Promise<Stage4ResultDat
         stage: 4,
         evidence: ['Claude response parsing failed'],
         detectionMethod: 'content-analysis',
-        prong1_analysis: 'Analysis failed',
-        prong2_analysis: 'Analysis failed',
-        prong3_analysis: 'Analysis failed',
-        all_prongs_met: false,
+        content_category: 'unknown',
+        requires_age_verification: false,
+        category_analysis: 'Analysis failed',
+        content_assessment: 'Analysis failed',
+        reasoning_summary: 'Failed to parse response',
       };
     }
 
@@ -246,20 +247,22 @@ export async function stage4ContentAnalysis(page: Page): Promise<Stage4ResultDat
         stage: 4,
         evidence: ['Invalid Claude response structure'],
         detectionMethod: 'content-analysis',
-        prong1_analysis: 'Invalid response',
-        prong2_analysis: 'Invalid response',
-        prong3_analysis: 'Invalid response',
-        all_prongs_met: false,
+        content_category: 'unknown',
+        requires_age_verification: false,
+        category_analysis: 'Invalid response',
+        content_assessment: 'Invalid response',
+        reasoning_summary: 'Invalid response structure',
       };
     }
 
     // Convert confidence from 0-1 to 0-100
     const confidence = Math.round((parsedResponse.confidence || 0) * 100);
 
-    console.log(`[Stage 4] Legal Analysis Result:`);
+    console.log(`[Stage 4] Content Classification Result:`);
     console.log(`  Verdict: ${parsedResponse.verdict.toUpperCase()}`);
+    console.log(`  Category: ${parsedResponse.content_category}`);
     console.log(`  Confidence: ${confidence}%`);
-    console.log(`  All Prongs Met: ${parsedResponse.all_prongs_met}`);
+    console.log(`  Requires Age Verification: ${parsedResponse.requires_age_verification}`);
 
     return {
       url,
@@ -268,10 +271,11 @@ export async function stage4ContentAnalysis(page: Page): Promise<Stage4ResultDat
       stage: 4,
       evidence: parsedResponse.evidence || [],
       detectionMethod: 'content-analysis',
-      prong1_analysis: parsedResponse.prong1_analysis,
-      prong2_analysis: parsedResponse.prong2_analysis,
-      prong3_analysis: parsedResponse.prong3_analysis,
-      all_prongs_met: parsedResponse.all_prongs_met,
+      content_category: parsedResponse.content_category,
+      requires_age_verification: parsedResponse.requires_age_verification,
+      category_analysis: parsedResponse.category_analysis,
+      content_assessment: parsedResponse.content_assessment,
+      reasoning_summary: parsedResponse.reasoning_summary,
       rawResponse: parsedResponse,
     };
   } catch (error) {
@@ -285,16 +289,17 @@ export async function stage4ContentAnalysis(page: Page): Promise<Stage4ResultDat
       stage: 4,
       evidence: [`Stage 4 error: ${errorMsg}`],
       detectionMethod: 'content-analysis',
-      prong1_analysis: 'Error',
-      prong2_analysis: 'Error',
-      prong3_analysis: 'Error',
-      all_prongs_met: false,
+      content_category: 'unknown',
+      requires_age_verification: false,
+      category_analysis: 'Error during analysis',
+      content_assessment: errorMsg,
+      reasoning_summary: `Analysis error: ${errorMsg}`,
     };
   }
 }
 
 /**
- * Stage 4 Result type (extends DetectionResult with legal analysis)
+ * Stage 4 Result type (extends DetectionResult with content category analysis)
  */
 export interface Stage4ResultData {
   url: string;
@@ -303,9 +308,10 @@ export interface Stage4ResultData {
   stage: 4;
   evidence: string[];
   detectionMethod: 'content-analysis';
-  prong1_analysis: string;
-  prong2_analysis: string;
-  prong3_analysis: string;
-  all_prongs_met: boolean;
+  content_category: 'adult' | 'gambling' | 'alcohol' | 'tobacco' | 'drugs' | 'weapons' | 'services' | 'general' | 'unknown';
+  requires_age_verification: boolean;
+  category_analysis: string;
+  content_assessment: string;
+  reasoning_summary: string;
   rawResponse?: unknown;
 }

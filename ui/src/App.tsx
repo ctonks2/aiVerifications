@@ -4,7 +4,15 @@ import TestForm from './components/TestForm';
 import ResultsTable from './components/ResultsTable';
 import StatsSummary from './components/StatsSummary';
 import DetailModal from './components/DetailModal';
+import WebsiteListManager from './components/WebsiteListManager';
+import ReportNavigator from './components/ReportNavigator';
 import './App.css';
+
+interface Website {
+  id: string;
+  url: string;
+  selected: boolean;
+}
 
 interface TestResult {
   id: string;
@@ -17,6 +25,7 @@ interface TestResult {
   humanReviewNeeded: boolean;
   explanation: string;
   investigatorNotes?: string;
+  codeEvidence?: Array<{ description: string; code: string; type: string; location?: string }>;
   fullReport?: any; // Complete ComplianceReport with all stages
 }
 
@@ -29,6 +38,14 @@ function App() {
   const [lastResult, setLastResult] = useState<any>(null);
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Website list state
+  const [websites, setWebsites] = useState<Website[]>([]);
+  
+  // Batch testing state
+  const [batchResults, setBatchResults] = useState<TestResult[]>([]);
+  const [isReportNavigatorOpen, setIsReportNavigatorOpen] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   // Load history on mount
   useEffect(() => {
@@ -90,6 +107,47 @@ function App() {
     setSelectedResult(null);
   };
 
+  const handleBatchTest = async (urls: string[]) => {
+    setBatchLoading(true);
+    setError(null);
+    setBatchResults([]);
+
+    const results: TestResult[] = [];
+    
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const response = await axios.post(
+          `${API_URL}/test`,
+          { url: urls[i] },
+          { timeout: 5 * 60 * 1000 }
+        );
+        const testResult = response.data.testResult;
+        results.push(testResult);
+        
+        // Update test history as we go
+        setTestHistory((prev) => [testResult, ...prev]);
+      } catch (err: any) {
+        console.error(`Failed to test ${urls[i]}:`, err);
+        // Create an error result for this URL
+        results.push({
+          id: Date.now().toString() + i,
+          url: urls[i],
+          timestamp: Date.now(),
+          status: 'error',
+          confidence: 0,
+          ageVerificationFound: false,
+          stage: null,
+          humanReviewNeeded: false,
+          explanation: err.response?.data?.error || 'Failed to test URL',
+        });
+      }
+    }
+
+    setBatchResults(results);
+    setIsReportNavigatorOpen(true);
+    setBatchLoading(false);
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -101,6 +159,23 @@ function App() {
 
       <main className="app-main">
         <div className="container">
+          {/* Website List Manager Section */}
+          <section className="section website-list-section">
+            <WebsiteListManager
+              websites={websites}
+              onWebsitesChange={setWebsites}
+              onRunTests={handleBatchTest}
+              loading={batchLoading}
+            />
+          </section>
+
+          {/* Divider */}
+          {websites.length > 0 && (
+            <div style={{ textAlign: 'center', margin: '2rem 0', color: '#9ca3af' }}>
+              <p style={{ margin: 0 }}>OR</p>
+            </div>
+          )}
+
           {/* Test Form Section */}
           <section className="section form-section">
             <TestForm onTest={handleTest} loading={loading} />
@@ -157,12 +232,25 @@ function App() {
           isOpen={isModalOpen}
           onClose={handleCloseModal}
           url={selectedResult.url}
+          stage1={selectedResult.fullReport?.allStages?.stage1}
           stage3={selectedResult.fullReport?.allStages?.stage3}
           stage4={selectedResult.fullReport?.allStages?.stage4}
+          codeEvidence={selectedResult.codeEvidence}
           investigatorNotes={selectedResult.investigatorNotes}
           isLoading={loading}
         />
       )}
+
+      {/* Report Navigator Modal */}
+      <ReportNavigator
+        isOpen={isReportNavigatorOpen}
+        onClose={() => {
+          setIsReportNavigatorOpen(false);
+          setBatchResults([]);
+        }}
+        results={batchResults}
+        isLoading={batchLoading}
+      />
 
       <footer className="app-footer">
         <p>Age Gate Next-Gen Enforcement System | Division TBD </p>

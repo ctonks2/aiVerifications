@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import '../styles/DetailModal.css';
 
+interface CodeEvidence {
+  description: string;
+  code: string;
+  type: 'attribute' | 'text' | 'element' | 'href' | 'form';
+  location?: string;
+}
+
 interface DetectionResult {
   url: string;
   verdict: 'yes' | 'no' | 'undetermined';
@@ -13,17 +20,22 @@ interface DetectionResult {
     hasAgeVerification: boolean | null;
     reasoning?: string;
   };
-  prong1_analysis?: string;
-  prong2_analysis?: string;
-  prong3_analysis?: string;
+  screenshot?: string;
+  content_category?: 'adult' | 'gambling' | 'alcohol' | 'tobacco' | 'drugs' | 'weapons' | 'services' | 'general' | 'unknown';
+  requires_age_verification?: boolean;
+  category_analysis?: string;
+  content_assessment?: string;
+  reasoning_summary?: string;
 }
 
 interface DetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   url: string;
+  stage1?: DetectionResult;
   stage3?: DetectionResult;
   stage4?: DetectionResult;
+  codeEvidence?: CodeEvidence[];
   investigatorNotes?: string;
   isLoading?: boolean;
 }
@@ -32,8 +44,10 @@ const DetailModal: React.FC<DetailModalProps> = ({
   isOpen,
   onClose,
   url,
+  stage1,
   stage3,
   stage4,
+  codeEvidence,
   investigatorNotes,
   isLoading,
 }) => {
@@ -75,17 +89,159 @@ const DetailModal: React.FC<DetailModalProps> = ({
           {/* Summary Section */}
           <div className="detail-section">
             <h4>Detection Summary</h4>
-            {!stage3 && !stage4 ? (
+            {!stage1 && !stage3 && !stage4 ? (
               <div style={{ padding: '12px', color: '#6b7280', fontStyle: 'italic' }}>
-                <p>Running analysis... Stage 3 and 4 results will appear here.</p>
+                <p>Running analysis... Stage results will appear here.</p>
               </div>
             ) : (
               <p style={{ color: '#374151', lineHeight: '1.6' }}>
+                {stage1 ? `Stage 1 detected: ${stage1.verdict.toUpperCase()} (${Math.round(stage1.confidence)}% confidence)` : ''}
                 {stage3 ? `Stage 3 detected: ${stage3.verdict.toUpperCase()} (${Math.round(stage3.confidence)}% confidence)` : 'Stage 3 not run'}
                 {stage4 ? ` | Stage 4 verdict: ${stage4.verdict === 'yes' ? 'HARMFUL CONTENT' : stage4.verdict === 'no' ? 'NOT HARMFUL' : 'UNDETERMINED'}` : ''}
               </p>
             )}
           </div>
+
+          {/* Stage 1 Section */}
+          {stage1 && (
+            <div className="detail-section stage-section">
+              <div className="stage-header">
+                <h3>Stage 1: Network & HTML Pattern Analysis</h3>
+                <span className={`method-badge`}>{stage1.detectionMethod}</span>
+              </div>
+
+              <div className="analysis-box">
+                <div className="verdict-box">
+                  <strong>Verdict:</strong>
+                  <span
+                    className={`verdict-badge verdict-${stage1.verdict}`}
+                    style={{
+                      backgroundColor:
+                        stage1.verdict === 'yes'
+                          ? '#10b981'
+                          : stage1.verdict === 'no'
+                            ? '#gray'
+                            : '#f59e0b',
+                    }}
+                  >
+                    {stage1.verdict.toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="confidence-box">
+                  <strong>Confidence:</strong>
+                  <div className="confidence-bar">
+                    <div
+                      className="confidence-fill"
+                      style={{
+                        width: `${stage1.confidence}%`,
+                        backgroundColor: getConfidenceColor(stage1.confidence),
+                      }}
+                    />
+                  </div>
+                  <span>{Math.round(stage1.confidence)}%</span>
+                </div>
+
+                {/* Detection Signals */}
+                {stage1.evidence && stage1.evidence.length > 0 && (
+                  <div className="evidence-section">
+                    <strong>Detection Findings:</strong>
+                    <ul className="evidence-list">
+                      {stage1.evidence.map((item, idx) => (
+                        <li key={idx}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Network Providers */}
+                {(stage1 as any).details?.networkProviders && (stage1 as any).details.networkProviders.length > 0 && (
+                  <div className="prong">
+                    <span className="prong-title">🌐 Age Verification Providers Detected:</span>
+                    <ul style={{ marginTop: '8px', marginLeft: '20px' }}>
+                      {(stage1 as any).details.networkProviders.map((provider: string, idx: number) => (
+                        <li key={idx}>{provider}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* HTML Snippets */}
+                {(stage1 as any).details?.htmlSnippets && (stage1 as any).details.htmlSnippets.length > 0 && (
+                  <div className="prong">
+                    <span className="prong-title">📝 Age-Related Text Found:</span>
+                    {(stage1 as any).details.htmlSnippets.map((snippet: string, idx: number) => (
+                      <div key={idx} style={{ marginTop: '8px', padding: '8px', background: '#f9fafb', borderRadius: '4px', borderLeft: '3px solid #3b82f6' }}>
+                        <code style={{ fontSize: '12px', color: '#374151' }}>"{snippet}"</code>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Consent Snippets */}
+                {(stage1 as any).details?.consentSnippets && (stage1 as any).details.consentSnippets.length > 0 && (
+                  <div className="prong">
+                    <span className="prong-title">✓ Age Verification Language:</span>
+                    {(stage1 as any).details.consentSnippets.map((snippet: string, idx: number) => (
+                      <div key={idx} style={{ marginTop: '8px', padding: '8px', background: '#f9fafb', borderRadius: '4px', borderLeft: '3px solid #10b981' }}>
+                        <code style={{ fontSize: '12px', color: '#374151' }}>"{snippet}"</code>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Form Fields */}
+                {(stage1 as any).details?.formFields && (stage1 as any).details.formFields.length > 0 && (
+                  <div className="prong">
+                    <span className="prong-title">📋 Age Verification Form Fields:</span>
+                    {(stage1 as any).details.formFields.map((field: { name: string; html: string }, idx: number) => (
+                      <div key={idx} style={{ marginTop: '8px', padding: '8px', background: '#f9fafb', borderRadius: '4px', borderLeft: '3px solid #f59e0b' }}>
+                        <p style={{ margin: '0 0 4px 0', fontSize: '12px', fontWeight: 'bold', color: '#1f2937' }}>Field: {field.name}</p>
+                        <code style={{ fontSize: '11px', color: '#4b5563', display: 'block', overflow: 'auto', maxHeight: '80px' }}>{field.html}</code>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Meta Tags */}
+                {(stage1 as any).details?.metaTags && (stage1 as any).details.metaTags.length > 0 && (
+                  <div className="prong">
+                    <span className="prong-title">🏷️ Meta Tags (Adult Content Indicators):</span>
+                    {(stage1 as any).details.metaTags.map((tag: string, idx: number) => (
+                      <div key={idx} style={{ marginTop: '8px', padding: '8px', background: '#f9fafb', borderRadius: '4px', borderLeft: '3px solid #ef4444' }}>
+                        <code style={{ fontSize: '11px', color: '#4b5563', display: 'block', overflow: 'auto', maxHeight: '80px' }}>{tag}</code>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Code Evidence Section */}
+          {codeEvidence && codeEvidence.length > 0 && (
+            <div className="detail-section code-evidence-section">
+              <h4>📝 Code Evidence (Stage 0)</h4>
+              <div className="evidence-list">
+                {codeEvidence.map((evidence, idx) => (
+                  <div key={idx} className="evidence-item">
+                    <div className="evidence-header">
+                      <span className="evidence-desc">{evidence.description}</span>
+                      <span className={`evidence-type evidence-type-${evidence.type}`}>
+                        {evidence.type}
+                      </span>
+                    </div>
+                    {evidence.location && (
+                      <p className="evidence-location">📍 {evidence.location}</p>
+                    )}
+                    <div className="evidence-code">
+                      <code>{evidence.code}</code>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Stage 3 Section */}
           {stage3 && (
@@ -214,25 +370,57 @@ const DetailModal: React.FC<DetailModalProps> = ({
                   <span>{Math.round(stage4.confidence)}%</span>
                 </div>
 
-                {(stage4.prong1_analysis || stage4.prong2_analysis || stage4.prong3_analysis) && (
+                {(stage4.category_analysis || stage4.content_assessment) && (
                   <div className="prongs-section">
-                    <strong>Legal Analysis Prongs:</strong>
-                    {stage4.prong1_analysis && (
+                    <strong>Content Category Assessment:</strong>
+                    
+                    {stage4.content_category && (
                       <div className="prong">
-                        <span className="prong-title">Prong 1 (Explicit Sexual Material):</span>
-                        <p>{stage4.prong1_analysis}</p>
+                        <span className="prong-title">Content Category:</span>
+                        <p style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>
+                          {stage4.content_category === 'adult' && '🔞 Adult/Sexual Content'}
+                          {stage4.content_category === 'gambling' && '🎰 Gambling/Betting'}
+                          {stage4.content_category === 'alcohol' && '🍷 Alcohol/Beverages'}
+                          {stage4.content_category === 'tobacco' && '🚬 Tobacco/Vaping'}
+                          {stage4.content_category === 'drugs' && '💊 Drugs/Cannabis'}
+                          {stage4.content_category === 'weapons' && '🔫 Weapons/Explosives'}
+                          {stage4.content_category === 'services' && '⚙️ Age-Restricted Services'}
+                          {stage4.content_category === 'general' && '✅ General Audience'}
+                          {stage4.content_category === 'unknown' && '❓ Unknown Category'}
+                        </p>
                       </div>
                     )}
-                    {stage4.prong2_analysis && (
+
+                    {stage4.requires_age_verification !== undefined && (
                       <div className="prong">
-                        <span className="prong-title">Prong 2 (Patently Offensive):</span>
-                        <p>{stage4.prong2_analysis}</p>
+                        <span className="prong-title">Requires Age Verification:</span>
+                        <p style={{ 
+                          color: stage4.requires_age_verification ? '#ef4444' : '#10b981',
+                          fontWeight: 'bold'
+                        }}>
+                          {stage4.requires_age_verification ? '✗ YES - Age verification required' : '✓ NO - General audience content'}
+                        </p>
                       </div>
                     )}
-                    {stage4.prong3_analysis && (
+
+                    {stage4.category_analysis && (
                       <div className="prong">
-                        <span className="prong-title">Prong 3 (Serious Value):</span>
-                        <p>{stage4.prong3_analysis}</p>
+                        <span className="prong-title">Category Analysis:</span>
+                        <p>{stage4.category_analysis}</p>
+                      </div>
+                    )}
+
+                    {stage4.content_assessment && (
+                      <div className="prong">
+                        <span className="prong-title">Content Assessment:</span>
+                        <p>{stage4.content_assessment}</p>
+                      </div>
+                    )}
+
+                    {stage4.reasoning_summary && (
+                      <div className="prong">
+                        <span className="prong-title">Summary:</span>
+                        <p style={{ fontStyle: 'italic', color: '#374151' }}>{stage4.reasoning_summary}</p>
                       </div>
                     )}
                   </div>
@@ -253,19 +441,21 @@ const DetailModal: React.FC<DetailModalProps> = ({
           )}
 
           {/* Empty State if no stage data */}
-          {!stage3 && !stage4 && (
+          {!stage1 && !stage3 && !stage4 && (
             <div className="detail-section" style={{ textAlign: 'center', padding: '32px 16px' }}>
               <p style={{ color: '#6b7280' }}>No detailed stage analysis available yet.</p>
-              <p style={{ color: '#9ca3af', fontSize: '13px' }}>Stage 3 and 4 results will appear here once analysis completes.</p>
+              <p style={{ color: '#9ca3af', fontSize: '13px' }}>Stage results will appear here once analysis completes.</p>
               {/* Debug info */}
               <details style={{ marginTop: '16px', textAlign: 'left' }}>
                 <summary style={{ cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>Debug Info</summary>
                 <pre style={{ background: '#f3f4f6', padding: '8px', borderRadius: '4px', fontSize: '11px', overflow: 'auto' }}>
                   {JSON.stringify({
+                    hasStage1: !!stage1,
                     hasStage3: !!stage3,
                     hasStage4: !!stage4,
-                    stage3Verdict: stage3?.verdict,
-                    stage4Verdict: stage4?.verdict,
+                    stage1Verdict: stage1 ? (stage1 as any).verdict : 'N/A',
+                    stage3Verdict: stage3 ? (stage3 as any).verdict : 'N/A',
+                    stage4Verdict: stage4 ? (stage4 as any).verdict : 'N/A',
                     isLoading,
                   }, null, 2)}
                 </pre>

@@ -1,18 +1,40 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 
 interface TestFormProps {
   onTest: (url: string) => void;
   loading: boolean;
 }
 
+const API_URL = 'http://localhost:3001/api';
+
 const TestForm: React.FC<TestFormProps> = ({ onTest, loading }) => {
   const [url, setUrl] = useState('');
+  const [allStagesLoading, setAllStagesLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (url.trim()) {
       onTest(url);
       setUrl('');
+    }
+  };
+
+  const handleAllStagesTest = async () => {
+    setAllStagesLoading(true);
+    try {
+      const response = await axios.post(
+        `${API_URL}/test-all-stages`,
+        { url: 'https://www.pornhub.com/' },
+        { timeout: 5 * 60 * 1000 }
+      );
+      // Reload the page or update history to show the result
+      window.location.reload();
+    } catch (err: any) {
+      console.error('All stages test failed:', err);
+      alert(`Error: ${err.response?.data?.error || 'Failed to run all-stages test'}`);
+    } finally {
+      setAllStagesLoading(false);
     }
   };
 
@@ -78,6 +100,44 @@ const TestForm: React.FC<TestFormProps> = ({ onTest, loading }) => {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {!loading && (
+        <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e5e7eb' }}>
+          <p style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+            🎬 Deep Analysis:
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={allStagesLoading}
+            onClick={handleAllStagesTest}
+            style={{
+              width: '100%',
+              backgroundColor: '#8b5cf6',
+              borderColor: '#8b5cf6',
+            }}
+          >
+            {allStagesLoading ? (
+              <>
+                <span className="spinner"></span>
+                Running All Stages...
+              </>
+            ) : (
+              <>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="1" />
+                  <circle cx="19" cy="12" r="1" />
+                  <circle cx="5" cy="12" r="1" />
+                </svg>
+                Test All Stages (Pornhub)
+              </>
+            )}
+          </button>
+          <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.5rem' }}>
+            Forces all 4 detection stages to run regardless of confidence levels
+          </p>
         </div>
       )}
     </form>

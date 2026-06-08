@@ -22,7 +22,9 @@ export interface Stage1Result extends DetectionResult {
   details?: {
     networkProviders?: string[];
     htmlPatterns?: string[];
-    formFields?: string[];
+    htmlSnippets?: string[];
+    consentSnippets?: string[];
+    formFields?: Array<{ name: string; html: string }>;
     metaTags?: string[];
   };
 }

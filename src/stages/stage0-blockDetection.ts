@@ -12,6 +12,7 @@ export interface Stage0Result {
   blockDetected: BlockDetectionResult;
   shouldContinue: boolean; // true if age verification, false if bot detection
   verdict: 'proceed' | 'uncertain' | 'blocked';
+  codeEvidence?: Array<{ description: string; code: string; type: string; location?: string }>; // Extract code evidence for UI
 }
 
 /**
@@ -45,6 +46,20 @@ export async function stage0BlockDetection(page: Page, url: string): Promise<Sta
     console.log(`   Type: ${blockDetection.blockElements[0] || 'Unknown'}`);
     console.log(`   Confidence: ${blockDetection.confidence}%`);
     console.log(`   Explanation: ${blockDetection.explanation}`);
+    
+    // Log code evidence
+    if (blockDetection.codeEvidence && blockDetection.codeEvidence.length > 0) {
+      console.log(`\n📝 CODE EVIDENCE DETECTED:`);
+      blockDetection.codeEvidence.forEach((evidence, idx) => {
+        console.log(`\n   Evidence ${idx + 1}: ${evidence.description}`);
+        console.log(`   Type: ${evidence.type}`);
+        if (evidence.location) {
+          console.log(`   Location: ${evidence.location}`);
+        }
+        console.log(`   Code: ${evidence.code.substring(0, 200)}${evidence.code.length > 200 ? '...' : ''}`);
+      });
+    }
+    
     console.log(`   ✓ Proceeding with Stage 1+ analysis`);
   } else {
     verdict = 'proceed';
@@ -66,5 +81,11 @@ export async function stage0BlockDetection(page: Page, url: string): Promise<Sta
     blockDetected: blockDetection,
     shouldContinue,
     verdict,
+    codeEvidence: blockDetection.codeEvidence?.map((ev) => ({
+      description: ev.description,
+      code: ev.code,
+      type: ev.type,
+      location: ev.location,
+    })),
   };
 }

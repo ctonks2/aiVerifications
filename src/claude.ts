@@ -70,7 +70,7 @@ export async function sendPromptToClaude(
       messages: [
         {
           role: 'user',
-          content: content as Anthropic.ContentBlockParam[],
+          content: content as Anthropic.ContentBlock[],
         },
       ],
     });
